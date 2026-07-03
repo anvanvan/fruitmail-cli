@@ -9,7 +9,9 @@
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",
-    "test": "npm run build && jest"
+    "test": "npm run build && jest",
+    "test:py": "cd indexer && uv run pytest -q",
+    "test:all": "npm test && npm run test:py"
   },
   "repository": {
     "type": "git",
@@ -30,6 +32,13 @@
   "files": [
     "dist/*.js",
     "bin",
+    "indexer/main.py",
+    "indexer/emlx.py",
+    "indexer/paths.py",
+    "indexer/schema.py",
+    "indexer/pyproject.toml",
+    "indexer/uv.lock",
+    "indexer/README.md",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

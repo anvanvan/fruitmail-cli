@@ -5,6 +5,9 @@
 ### Features
 
 - Added `--offset` / `-o` to paginate search results based on PR #1. Thanks to @JakubPecenka.
+- Added body full-text search: `search --body <query>` runs a bm25-ranked FTS5 query (with snippets, `--account`/`--mailbox` filters, and `--days` parity with metadata search) over a local `~/.fruitmail/index.db` built by a new CocoIndex-based Python indexer.
+- Added the `index build`/`index refresh`/`index status` command group to manage the body search index; body searches auto-build a missing index and auto-refresh a stale one.
+- Added `test:py` and `test:all` npm scripts plus a push/PR CI workflow so the Node and Python suites run together; releases are gated on `test:all` too.
 
 ### Fixes
 

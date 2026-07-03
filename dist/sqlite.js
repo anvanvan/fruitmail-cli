@@ -34,6 +34,10 @@ class SQLiteDatabase {
     prepare(sql) {
         return new SQLiteStatement(this.database.prepare(sql));
     }
+    /** Register a custom SQL function (re-registering a name replaces it; works read-only). */
+    function(name, fn) {
+        this.database.function(name, fn);
+    }
     close() {
         this.database.close();
     }

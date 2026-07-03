@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { sortMailVersionNames } from './mail-version';
 
 /**
  * Finds the Apple Mail database.
@@ -20,16 +21,10 @@ export async function findDbPath(): Promise<string> {
     try {
         const entries = await fs.readdir(mailRoot, { withFileTypes: true });
 
-        // Find V* directories
-        const vDirs = entries
-            .filter(e => e.isDirectory() && /^V\d+$/.test(e.name))
-            .map(e => e.name)
-            .sort((a, b) => {
-                // Sort V10 > V9
-                const verA = parseInt(a.substring(1), 10);
-                const verB = parseInt(b.substring(1), 10);
-                return verB - verA;
-            });
+        // Find V* directories, highest N first (V10 beats V9)
+        const vDirs = sortMailVersionNames(
+            entries.filter(e => e.isDirectory()).map(e => e.name)
+        );
 
         for (const vDir of vDirs) {
             const dbPath = path.join(mailRoot, vDir, 'MailData', 'Envelope Index');
