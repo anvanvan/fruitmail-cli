@@ -14,7 +14,7 @@ usage() {
 Usage:
   committer [--fast] [--body BODY] [--body-file FILE] [--delete-stale-git-lock] SUBJECT [--] PATH...
 
-Commit helper. When installed globally, delegates to repo-local scripts/committer
+Commit helper. When installed globally, delegates to repo-local scripts/committer.sh
 when present. Otherwise it stages only listed paths and commits them.
 EOF
   exit "$exit_code"
@@ -34,7 +34,7 @@ if [[ -z "$repo_root" ]]; then
 fi
 
 self_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
-repo_committer="$repo_root/scripts/committer"
+repo_committer="$repo_root/scripts/committer.sh"
 if [[ "${COMMITTER_NO_DELEGATE:-}" != "1" && -f "$repo_committer" ]]; then
   repo_committer_path="$(cd "$(dirname "$repo_committer")" && pwd)/$(basename "$repo_committer")"
   if [[ "$repo_committer_path" != "$self_path" ]]; then

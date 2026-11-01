@@ -2,12 +2,12 @@
 
 ## Git
 
-- Commit with `scripts/committer "<subject>" -- <path>...`; it stages only listed paths. Use `--body` or `--body-file` for commit bodies.
+- Commit with `scripts/committer.sh "<subject>" -- <path>...`; it stages only listed paths. Use `--body` or `--body-file` for commit bodies.
 
 ## Release
 
-- Use `./scripts/release check <version>` for local preflight.
-- Use `./scripts/release run <version>` only after explicit release approval.
+- Use `./scripts/release.sh check <version>` for local preflight.
+- Use `./scripts/release.sh run <version>` only after explicit release approval.
 - Tag pushes run the release workflow, publish the GitHub tarball, publish npm, and update `gumadeiras/homebrew-tap`.
 
 ## Changelog

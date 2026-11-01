@@ -74,9 +74,9 @@ Requires Node.js 22.13 or newer for npm installs.
 
 ## 🛠️ Scripts
 
-- `./scripts/committer "message" path...`: stage only the listed paths and create a commit
-- `./scripts/release check 1.1.1`: verify synced release versions and run the release test gates
-- `./scripts/release run 1.1.1`: bump versions, run tests, package artifacts, tag, push, wait for the release workflow, publish npm, and update Homebrew
+- `./scripts/committer.sh "message" path...`: stage only the listed paths and create a commit
+- `./scripts/release.sh check 1.1.1`: verify synced release versions and run the release test gates
+- `./scripts/release.sh run 1.1.1`: bump versions, run tests, package artifacts, tag, push, wait for the release workflow, publish npm, and update Homebrew
 
 Release CI publishes to npm with trusted publishing.
 

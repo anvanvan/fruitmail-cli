@@ -4,7 +4,7 @@
   "description": "Fast SQLite-based search for Apple Mail.app with full body content support.",
   "main": "dist/index.js",
   "bin": {
-    "fruitmail": "./bin/fruitmail"
+    "fruitmail": "./bin/fruitmail.js"
   },
   "scripts": {
     "build": "tsc",

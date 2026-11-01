@@ -8,11 +8,11 @@ DEFAULT_REMOTE="${FRUITMAIL_RELEASE_REMOTE:-origin}"
 usage() {
     cat <<'EOF'
 Usage:
-  ./scripts/release check <version>
-  ./scripts/release bump <version>
-  ./scripts/release package <version>
-  ./scripts/release publish <version>
-  ./scripts/release run <version>
+  ./scripts/release.sh check <version>
+  ./scripts/release.sh bump <version>
+  ./scripts/release.sh package <version>
+  ./scripts/release.sh publish <version>
+  ./scripts/release.sh run <version>
 
 Commands:
   check     Validate synced versions and run release test gates.
