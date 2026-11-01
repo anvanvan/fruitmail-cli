@@ -1,7 +1,0 @@
-[scripts]
-# Script names that keep no extension. The root `fruitmail` stays a regular file. README.md and
-# install.sh fetch it by its raw GitHub URL, and GitHub raw serves a symlink as its target path.
-exempt = ["fruitmail"]
-# Names an external tool fixes. The symlink without extension stays. `~/.local/bin/fruitmail`
-# points at `bin/fruitmail`.
-fixed = ["bin/fruitmail"]
