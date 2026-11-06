@@ -4,8 +4,6 @@
 !/dist/*.js
 /dist/release
 /node_modules
-# CocoIndex Code (ccc)
-/.cocoindex_code/
 # Python build artifacts
 __pycache__/
 *.pyc
