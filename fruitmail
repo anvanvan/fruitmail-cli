@@ -281,7 +281,14 @@ tell application "Mail"
     try
         set targetId to $MSG_ID
         set msg to missing value
-        repeat with mailboxRef in every mailbox
+        set mailboxRefs to {}
+        repeat with accountRef in every account
+            try
+                set mailboxRefs to mailboxRefs & (every mailbox of accountRef)
+            end try
+        end repeat
+        set mailboxRefs to mailboxRefs & (every mailbox)
+        repeat with mailboxRef in mailboxRefs
             try
                 set msg to first message of mailboxRef whose id is targetId
                 exit repeat
@@ -318,7 +325,14 @@ tell application "Mail"
     try
         set targetId to $MSG_ID
         set msg to missing value
-        repeat with mailboxRef in every mailbox
+        set mailboxRefs to {}
+        repeat with accountRef in every account
+            try
+                set mailboxRefs to mailboxRefs & (every mailbox of accountRef)
+            end try
+        end repeat
+        set mailboxRefs to mailboxRefs & (every mailbox)
+        repeat with mailboxRef in mailboxRefs
             try
                 set msg to first message of mailboxRef whose id is targetId
                 exit repeat
