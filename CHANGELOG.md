@@ -12,6 +12,8 @@
 
 ### Fixes
 
+- Fixed the shell `fruitmail body`/`open` reporting "Message not found" for every message in an account mailbox; they searched only the local mailboxes.
+- Fixed `body`/`open` crashing with "Value is too large to be represented as a JavaScript number" when the message id lookup had to fall back to the database.
 - Fixed pnpm global installs by removing the native SQLite runtime binding (#2). Thanks to @Mytakeon for reporting this.
 - Fixed the standalone Bash CLI so `fruitmail search --subject ...` and other search flags are accepted (#3). Thanks to @Mytakeon for reporting this.
 
