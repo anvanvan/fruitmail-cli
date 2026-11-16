@@ -313,6 +313,10 @@ esac
         expect(out).toMatch(/Deleted:\s+1/);
         expect(out).toMatch(/Unread:\s+1/);
     });
+
+    it.each([['stats --json'], ['stats -j'], ['-j stats']])('should print stats as JSON for %s', async (args) => {
+        expect(await parseJson(args)).toEqual({ total: 4, unread: 1, deleted: 1, attachments: 1 });
+    });
 });
 
 describe('Integration: sanitizeCell strips terminal escape sequences (F24)', () => {

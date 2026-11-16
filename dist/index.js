@@ -694,6 +694,11 @@ program.command('stats')
             const unread = db.prepare('SELECT COUNT(*) as c FROM messages WHERE read = 0 AND deleted = 0').get();
             const deleted = db.prepare('SELECT COUNT(*) as c FROM messages WHERE deleted = 1').get();
             const attachments = db.prepare('SELECT COUNT(DISTINCT message) as c FROM attachments').get();
+            if (opts.json) {
+                const stats = { total: total.c, unread: unread.c, deleted: deleted.c, attachments: attachments.c };
+                console.log(JSON.stringify(stats, null, 2));
+                return;
+            }
             console.log(chalk_1.default.bold('=== Mail Database Statistics ==='));
             console.log(`Total messages: ${chalk_1.default.green(total.c)}`);
             console.log(`Unread:         ${chalk_1.default.yellow(unread.c)}`);
