@@ -85,6 +85,24 @@ while [[ $# -gt 0 ]]; do
 done
 set -- "${ARGS[@]}"
 
+# AppleScript that sets msg to the message whose id is targetId, or missing value.
+# App-level `every mailbox` holds only the On My Mac mailboxes, so walk every
+# account's mailboxes first.
+FIND_MSG_AS='        set msg to missing value
+        set mailboxRefs to {}
+        repeat with accountRef in every account
+            try
+                set mailboxRefs to mailboxRefs & (every mailbox of accountRef)
+            end try
+        end repeat
+        set mailboxRefs to mailboxRefs & (every mailbox)
+        repeat with mailboxRef in mailboxRefs
+            try
+                set msg to first message of mailboxRef whose id is targetId
+                exit repeat
+            end try
+        end repeat'
+
 validate_nonnegative_integer_option limit "$LIMIT"
 validate_nonnegative_integer_option offset "$OFFSET"
 
@@ -280,13 +298,7 @@ case "$CMD" in
 tell application "Mail"
     try
         set targetId to $MSG_ID
-        set msg to missing value
-        repeat with mailboxRef in every mailbox
-            try
-                set msg to first message of mailboxRef whose id is targetId
-                exit repeat
-            end try
-        end repeat
+$FIND_MSG_AS
         if msg is missing value then
             return "ERROR_NOT_FOUND"
         end if
@@ -317,13 +329,7 @@ EOF
 tell application "Mail"
     try
         set targetId to $MSG_ID
-        set msg to missing value
-        repeat with mailboxRef in every mailbox
-            try
-                set msg to first message of mailboxRef whose id is targetId
-                exit repeat
-            end try
-        end repeat
+$FIND_MSG_AS
         if msg is missing value then
             return "ERROR_NOT_FOUND"
         end if

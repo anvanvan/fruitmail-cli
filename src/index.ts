@@ -136,21 +136,17 @@ function buildMessageLookupContext(db: any, rowId: string): MessageLookupContext
         'LEFT JOIN addresses a ON m.sender = a.ROWID'
     ];
 
-    const textIdColumns = ['document_id', 'message_id', 'internet_message_id', 'remote_id', 'external_id'];
-    for (const column of textIdColumns) {
-        if (messageColumns.includes(column)) {
-            const alias = `_fruitmail_${column}`;
-            selectedColumns.push(`m.${quoteIdentifier(column)} as ${quoteIdentifier(alias)}`);
-            selectedAliases.push({ column, alias });
-        }
-    }
-
-    const numericIdColumns = ['id', 'message_id', 'mail_id', 'mailbox_message_id', 'remote_id'];
-    for (const column of numericIdColumns) {
+    // Mail keeps 64-bit hashes in some id columns (messages.message_id). node:sqlite
+    // throws on reading an INTEGER beyond Number.MAX_SAFE_INTEGER, and no such value
+    // is a usable AppleScript id, so read it as NULL.
+    const idColumns = ['id', 'document_id', 'message_id', 'internet_message_id', 'mail_id', 'mailbox_message_id', 'remote_id', 'external_id'];
+    for (const column of idColumns) {
         if (!messageColumns.includes(column)) continue;
-        if (selectedAliases.some((entry) => entry.column === column)) continue;
         const alias = `_fruitmail_${column}`;
-        selectedColumns.push(`m.${quoteIdentifier(column)} as ${quoteIdentifier(alias)}`);
+        const ref = `m.${quoteIdentifier(column)}`;
+        selectedColumns.push(
+            `CASE WHEN typeof(${ref}) = 'integer' AND abs(${ref}) > ${Number.MAX_SAFE_INTEGER} THEN NULL ELSE ${ref} END as ${quoteIdentifier(alias)}`
+        );
         selectedAliases.push({ column, alias });
     }
 
@@ -743,6 +739,12 @@ program.command('stats')
                 const unread = db.prepare('SELECT COUNT(*) as c FROM messages WHERE read = 0 AND deleted = 0').get() as { c: number };
                 const deleted = db.prepare('SELECT COUNT(*) as c FROM messages WHERE deleted = 1').get() as { c: number };
                 const attachments = db.prepare('SELECT COUNT(DISTINCT message) as c FROM attachments').get() as { c: number };
+
+                if (opts.json) {
+                    const stats = { total: total.c, unread: unread.c, deleted: deleted.c, attachments: attachments.c };
+                    console.log(JSON.stringify(stats, null, 2));
+                    return;
+                }
 
                 console.log(chalk.bold('=== Mail Database Statistics ==='));
                 console.log(`Total messages: ${chalk.green(total.c)}`);
