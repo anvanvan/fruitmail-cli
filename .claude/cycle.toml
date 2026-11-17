@@ -1,0 +1,40 @@
+# cycle.toml — Soll-Stand für ~/dev/fruitmail-cli, Erst-Setup.
+# Ein package.json in der Wurzel (TypeScript-CLI) plus indexer/ (Python, uv): kein Monorepo-Manifest-Paar
+# mit eigenem Runner, test:all fährt beide. origin = eigener Fork, upstream = gumadeiras (nur READ).
+
+[project]
+vcs = "git"                                    # ← git rev-parse --show-toplevel
+
+[test]
+single = "npm run build && npx jest -t '{test}'"   # ← package.json:12 ("npm run build && jest")
+area = "npm run build && npx jest {area}"      # ← package.json:12 ("npm run build && jest") + tests/*.test.ts als {area}
+full = "npm run test:all"                      # ← .github/workflows/ci.yml:29 ("npm run test:all")
+affected = "npm run test:all"                  # ← .github/workflows/ci.yml:29 ("npm run test:all"); kein Runner mit Dateiliste: Tests rufen bin/fruitmail als Prozess auf
+typecheck = "npx tsc --noEmit"                 # ← package.json:10 ("tsc")
+budget = 120                                   # ← gemessen 2026-11-17: npm run test:all 9 s (134 jest + 50 pytest)
+
+[test.escalate]
+paths = ["package.json", "package-lock.json", "tsconfig.json", "jest.config.js", "indexer/pyproject.toml", "indexer/uv.lock", ".github/workflows/ci.yml"]   # ← package.json:14 ("npm test && npm run test:py") + Manifeste und Lock-Dateien
+
+[gate]
+test = "full"                                  # ← [test] full, kein Runner mit Dateiliste
+main_test = "full"                             # ← [test] full + Nutzer 2026-11-17
+revert = "auto"                                # ← Nutzer 2026-11-17 (eigener Fork, kein Kunde)
+
+[land]
+merge-base = "main"                            # ← git symbolic-ref refs/remotes/origin/HEAD (origin/main)
+
+[worktree]
+setup = ["npm ci"]                             # ← .github/workflows/ci.yml:26 ("npm ci")
+setup-budget = 120                             # ← gemessen 2026-11-17: npm ci im frischen Checkout 1 s (warmer Cache)
+copy = []                                      # ← .gitignore (keine .env, keine lokale Config)
+protected-branches = ["main"]                  # ← land.merge-base, keine Release-Branches in git branch -a
+
+[hooks]
+secret-scan = "betterleaks"                    # ← git config --global hook.secret-scan.event (pre-push) + command -v betterleaks
+
+[commit]
+trailers = ["Co-Authored-By"]                  # ← Nutzer 2026-11-17
+
+[scripts]
+language = "bash"                              # ← git remote -v (upstream gumadeiras/fruitmail-cli) + scripts/committer:1 ("#!/usr/bin/env bash")
