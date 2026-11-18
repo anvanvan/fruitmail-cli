@@ -113,14 +113,15 @@ function buildMessageLookupContext(db, rowId) {
     ];
     // Mail keeps 64-bit hashes in some id columns (messages.message_id). node:sqlite
     // throws on reading an INTEGER beyond Number.MAX_SAFE_INTEGER, and no such value
-    // is a usable AppleScript id, so read it as NULL.
+    // is a usable AppleScript id, so read it as NULL. A range test instead of abs():
+    // abs(-9223372036854775808) raises "integer overflow" in SQLite.
     const idColumns = ['id', 'document_id', 'message_id', 'internet_message_id', 'mail_id', 'mailbox_message_id', 'remote_id', 'external_id'];
     for (const column of idColumns) {
         if (!messageColumns.includes(column))
             continue;
         const alias = `_fruitmail_${column}`;
         const ref = `m.${quoteIdentifier(column)}`;
-        selectedColumns.push(`CASE WHEN typeof(${ref}) = 'integer' AND abs(${ref}) > ${Number.MAX_SAFE_INTEGER} THEN NULL ELSE ${ref} END as ${quoteIdentifier(alias)}`);
+        selectedColumns.push(`CASE WHEN typeof(${ref}) = 'integer' AND ${ref} NOT BETWEEN -${Number.MAX_SAFE_INTEGER} AND ${Number.MAX_SAFE_INTEGER} THEN NULL ELSE ${ref} END as ${quoteIdentifier(alias)}`);
         selectedAliases.push({ column, alias });
     }
     const mailboxHintsAliases = [];
@@ -218,10 +219,12 @@ async function getDb(options) {
     return { db, cleanUp };
 }
 function sanitizeCell(value) {
-    // Strip C0/C1 control chars (incl. ESC) before whitespace collapse so
-    // indexed mail can't inject terminal escape sequences into table output.
-    // eslint-disable-next-line no-control-regex
+    // Tab, CR and LF separate words, so they become spaces. Every other C0/C1
+    // control char (incl. ESC) is dropped so indexed mail can't inject terminal
+    // escape sequences into table output.
     return String(value ?? '')
+        .replace(/[\t\n\r]/g, ' ')
+        // eslint-disable-next-line no-control-regex
         .replace(/[\x00-\x1F\x7F-\x9F]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
