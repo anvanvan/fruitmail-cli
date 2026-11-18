@@ -13,6 +13,10 @@ const node_path_1 = __importDefault(require("node:path"));
 const db_finder_js_1 = require("./db-finder.js");
 const mail_actions_js_1 = require("./mail-actions.js");
 const sqlite_js_1 = require("./sqlite.js");
+const body_search_js_1 = require("./body-search.js");
+const index_paths_js_1 = require("./index-paths.js");
+const indexer_runner_js_1 = require("./indexer-runner.js");
+const time_utils_js_1 = require("./time-utils.js");
 // Setup CLI
 const program = new commander_1.Command();
 const packageVersion = require('../package.json').version;
@@ -107,22 +111,16 @@ function buildMessageLookupContext(db, rowId) {
         'LEFT JOIN subjects s ON m.subject = s.ROWID',
         'LEFT JOIN addresses a ON m.sender = a.ROWID'
     ];
-    const textIdColumns = ['document_id', 'message_id', 'internet_message_id', 'remote_id', 'external_id'];
-    for (const column of textIdColumns) {
-        if (messageColumns.includes(column)) {
-            const alias = `_fruitmail_${column}`;
-            selectedColumns.push(`m.${quoteIdentifier(column)} as ${quoteIdentifier(alias)}`);
-            selectedAliases.push({ column, alias });
-        }
-    }
-    const numericIdColumns = ['id', 'message_id', 'mail_id', 'mailbox_message_id', 'remote_id'];
-    for (const column of numericIdColumns) {
+    // Mail keeps 64-bit hashes in some id columns (messages.message_id). node:sqlite
+    // throws on reading an INTEGER beyond Number.MAX_SAFE_INTEGER, and no such value
+    // is a usable AppleScript id, so read it as NULL.
+    const idColumns = ['id', 'document_id', 'message_id', 'internet_message_id', 'mail_id', 'mailbox_message_id', 'remote_id', 'external_id'];
+    for (const column of idColumns) {
         if (!messageColumns.includes(column))
             continue;
-        if (selectedAliases.some((entry) => entry.column === column))
-            continue;
         const alias = `_fruitmail_${column}`;
-        selectedColumns.push(`m.${quoteIdentifier(column)} as ${quoteIdentifier(alias)}`);
+        const ref = `m.${quoteIdentifier(column)}`;
+        selectedColumns.push(`CASE WHEN typeof(${ref}) = 'integer' AND abs(${ref}) > ${Number.MAX_SAFE_INTEGER} THEN NULL ELSE ${ref} END as ${quoteIdentifier(alias)}`);
         selectedAliases.push({ column, alias });
     }
     const mailboxHintsAliases = [];
@@ -220,7 +218,13 @@ async function getDb(options) {
     return { db, cleanUp };
 }
 function sanitizeCell(value) {
-    return String(value ?? '').replace(/\s+/g, ' ').trim();
+    // Strip C0/C1 control chars (incl. ESC) before whitespace collapse so
+    // indexed mail can't inject terminal escape sequences into table output.
+    // eslint-disable-next-line no-control-regex
+    return String(value ?? '')
+        .replace(/[\x00-\x1F\x7F-\x9F]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 function computeColumnWidths(headers, desiredWidths, terminalWidth) {
     const minWidths = headers.map((header) => {
@@ -388,7 +392,7 @@ async function runSearch(filters, options) {
             conditions.push('m.read = 1');
         // --days
         if (filters.days) {
-            const seconds = Math.floor(Date.now() / 1000) - (parseInt(filters.days) * 86400);
+            const seconds = (0, time_utils_js_1.epochSecondsAgoFromNow)(filters.days);
             conditions.push('m.date_sent >= ?');
             params.push(seconds);
         }
@@ -431,6 +435,24 @@ async function runSearch(filters, options) {
             cleanUp();
     }
 }
+// Body Full-Text Search (bm25 over ~/.fruitmail/index.db)
+async function runBodySearch(filters, options) {
+    const pagination = parsePaginationOptions(options);
+    // Auto-index: missing index => build; stale/stamp-less => refresh.
+    await (0, indexer_runner_js_1.ensureIndexFresh)();
+    const db = new sqlite_js_1.SQLiteDatabase((0, index_paths_js_1.indexDbPath)(), {
+        readonly: true,
+        fileMustExist: true,
+        timeout: 2000
+    });
+    try {
+        const rows = (0, body_search_js_1.searchBody)(db, filters.body, filters, pagination);
+        outputResults(rows, options);
+    }
+    finally {
+        db.close();
+    }
+}
 // --- Commands ---
 program.command('search')
     .description('Unified advanced search')
@@ -443,13 +465,84 @@ program.command('search')
     .option('--days <number>', 'Days lookback', '7')
     .option('--has-attachment', 'Only emails with attachments')
     .option('--attachment-type <ext>', 'Filter by attachment extension (e.g. pdf)')
+    .option('--body <query>', 'Full-text search email bodies via the local index (unread/read/attachment filters are ignored in body mode)')
+    .option('--account <name>', 'Body mode: filter by account identifier')
+    .option('--mailbox <name>', 'Body mode: filter by mailbox name (case-insensitive)')
     .action(async (opts, cmd) => {
     const commandOptions = cmd.optsWithGlobals();
     try {
-        await runSearch(opts, commandOptions);
+        if (opts.body !== undefined) {
+            const bodyQuery = typeof opts.body === 'string' ? opts.body.trim() : '';
+            if (!bodyQuery) {
+                throw new Error('--body requires a non-empty search query');
+            }
+            // Body mode must NOT inherit the metadata verb's 7-day default:
+            // apply the --days cutoff only when the flag is explicitly given
+            // (full-index search otherwise). Explicit --days keeps the F6
+            // parity semantics (same epoch cutoff on date_sent as runSearch).
+            const bodyFilters = cmd.getOptionValueSource('days') === 'default'
+                ? { ...opts, body: bodyQuery, days: undefined }
+                : { ...opts, body: bodyQuery };
+            await runBodySearch(bodyFilters, commandOptions);
+        }
+        else {
+            if (opts.account !== undefined || opts.mailbox !== undefined) {
+                throw new Error('--account/--mailbox require --body');
+            }
+            await runSearch(opts, commandOptions);
+        }
     }
     catch (error) {
         handleCommandError(error, commandOptions);
+    }
+});
+// Index management (body full-text search index)
+const indexCommand = program.command('index')
+    .description('Manage the body full-text search index (~/.fruitmail/index.db)');
+function addIndexCommand(name, description, mode, successMessage) {
+    indexCommand.command(name)
+        .description(description)
+        .action(async (options, command) => {
+        const opts = getCommandOptions(options, command);
+        try {
+            await (0, indexer_runner_js_1.runIndexer)(mode);
+            if (opts.json) {
+                console.log(JSON.stringify((0, indexer_runner_js_1.getIndexStatus)(), null, 2));
+            }
+            else if (!opts.quiet) {
+                console.log(chalk_1.default.green(successMessage));
+            }
+        }
+        catch (error) {
+            handleCommandError(error, opts);
+        }
+    });
+}
+addIndexCommand('build', 'Delete and rebuild the body search index from scratch', 'build', 'Index built.');
+addIndexCommand('refresh', 'Incrementally update the body search index', 'refresh', 'Index refreshed.');
+indexCommand.command('status')
+    .description('Show body search index status')
+    .action(async (options, command) => {
+    const opts = getCommandOptions(options, command);
+    try {
+        const status = (0, indexer_runner_js_1.getIndexStatus)();
+        if (opts.json) {
+            console.log(JSON.stringify(status, null, 2));
+            return;
+        }
+        console.log(chalk_1.default.bold('=== Body Search Index ==='));
+        console.log(`Path:       ${status.path}`);
+        console.log(`Exists:     ${status.exists ? chalk_1.default.green('yes') : chalk_1.default.red('no')}`);
+        if (status.exists) {
+            console.log(`Emails:     ${chalk_1.default.green(status.emails)}`);
+            console.log(`Indexed at: ${status.indexedAt ?? chalk_1.default.yellow('never (no stamp)')}`);
+            console.log(`Age:        ${status.ageHours === null ? 'unknown' : `${status.ageHours.toFixed(1)}h`}`);
+            console.log(`Stale:      ${status.stale ? chalk_1.default.yellow('yes') : chalk_1.default.green('no')}`);
+            console.log(`Mode:       ${status.mode === null ? 'unknown' : status.mode.toString(8).padStart(3, '0')}`);
+        }
+    }
+    catch (error) {
+        handleCommandError(error, opts);
     }
 });
 // Shortcuts
@@ -595,6 +688,11 @@ program.command('stats')
             const unread = db.prepare('SELECT COUNT(*) as c FROM messages WHERE read = 0 AND deleted = 0').get();
             const deleted = db.prepare('SELECT COUNT(*) as c FROM messages WHERE deleted = 1').get();
             const attachments = db.prepare('SELECT COUNT(DISTINCT message) as c FROM attachments').get();
+            if (opts.json) {
+                const stats = { total: total.c, unread: unread.c, deleted: deleted.c, attachments: attachments.c };
+                console.log(JSON.stringify(stats, null, 2));
+                return;
+            }
             console.log(chalk_1.default.bold('=== Mail Database Statistics ==='));
             console.log(`Total messages: ${chalk_1.default.green(total.c)}`);
             console.log(`Unread:         ${chalk_1.default.yellow(unread.c)}`);

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { DatabaseSync, StatementSync } from 'node:sqlite';
+import { DatabaseSync, StatementSync, type SQLInputValue, type SQLOutputValue } from 'node:sqlite';
 
 interface SQLiteOptions {
     readonly?: boolean;
@@ -43,6 +43,11 @@ export class SQLiteDatabase {
 
     prepare(sql: string): SQLiteStatement {
         return new SQLiteStatement(this.database.prepare(sql));
+    }
+
+    /** Register a custom SQL function (re-registering a name replaces it; works read-only). */
+    function(name: string, fn: (...args: SQLOutputValue[]) => SQLInputValue): void {
+        this.database.function(name, fn);
     }
 
     close() {

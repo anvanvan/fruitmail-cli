@@ -4,3 +4,9 @@
 !/dist/*.js
 /dist/release
 /node_modules
+# Python build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/

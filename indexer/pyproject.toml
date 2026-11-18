@@ -1,0 +1,9 @@
+[project]
+name = "fruitmail-indexer"
+version = "0.1.0"
+description = "Builds ~/.fruitmail/index.db (emails table + FTS5) from Apple Mail .emlx files via CocoIndex v1."
+requires-python = ">=3.12"
+dependencies = ["cocoindex>=1.0.0"]
+
+[dependency-groups]
+dev = ["pytest"]

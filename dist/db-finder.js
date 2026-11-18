@@ -7,6 +7,7 @@ exports.findDbPath = findDbPath;
 const promises_1 = __importDefault(require("node:fs/promises"));
 const node_path_1 = __importDefault(require("node:path"));
 const node_os_1 = __importDefault(require("node:os"));
+const mail_version_1 = require("./mail-version");
 /**
  * Finds the Apple Mail database.
  * Logic:
@@ -22,16 +23,8 @@ async function findDbPath() {
     const mailRoot = node_path_1.default.join(node_os_1.default.homedir(), 'Library/Mail');
     try {
         const entries = await promises_1.default.readdir(mailRoot, { withFileTypes: true });
-        // Find V* directories
-        const vDirs = entries
-            .filter(e => e.isDirectory() && /^V\d+$/.test(e.name))
-            .map(e => e.name)
-            .sort((a, b) => {
-            // Sort V10 > V9
-            const verA = parseInt(a.substring(1), 10);
-            const verB = parseInt(b.substring(1), 10);
-            return verB - verA;
-        });
+        // Find V* directories, highest N first (V10 beats V9)
+        const vDirs = (0, mail_version_1.sortMailVersionNames)(entries.filter(e => e.isDirectory()).map(e => e.name));
         for (const vDir of vDirs) {
             const dbPath = node_path_1.default.join(mailRoot, vDir, 'MailData', 'Envelope Index');
             try {

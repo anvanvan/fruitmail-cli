@@ -1,4 +1,4 @@
-import { exec } from 'node:child_process';
+import { exec, execFile } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -175,6 +175,24 @@ esac
         });
     });
 
+    it('rejects an empty --body query instead of silently falling through to metadata search (F6)', async () => {
+        await expect(runCliJsonFailure('search --body "" --days 3650 --json')).resolves.toEqual({
+            error: '--body requires a non-empty search query'
+        });
+        await expect(runCliJsonFailure('search --body "   " --days 3650 --json')).resolves.toEqual({
+            error: '--body requires a non-empty search query'
+        });
+    });
+
+    it('rejects --account/--mailbox given without --body instead of silently ignoring them (F30)', async () => {
+        await expect(runCliJsonFailure('search --subject invoice --account ACC1 --days 3650 --json')).resolves.toEqual({
+            error: '--account/--mailbox require --body'
+        });
+        await expect(runCliJsonFailure('search --subject invoice --mailbox Inbox --days 3650 --json')).resolves.toEqual({
+            error: '--account/--mailbox require --body'
+        });
+    });
+
     it('should find emails by subject phrase', async () => {
         const json = await parseJson('search --subject "invoice" --days 3650 --json');
         expect(json).toHaveLength(1);
@@ -294,5 +312,60 @@ esac
         expect(out).toMatch(/Total messages:\s+4/);
         expect(out).toMatch(/Deleted:\s+1/);
         expect(out).toMatch(/Unread:\s+1/);
+    });
+
+    it.each([['stats --json'], ['stats -j'], ['-j stats']])('should print stats as JSON for %s', async (args) => {
+        expect(await parseJson(args)).toEqual({ total: 4, unread: 1, deleted: 1, attachments: 1 });
+    });
+});
+
+describe('Integration: sanitizeCell strips terminal escape sequences (F24)', () => {
+    const binPath = path.resolve(__dirname, '../bin/fruitmail');
+    let escapeDb: string;
+
+    beforeAll(() => {
+        escapeDb = path.join(os.tmpdir(), `fruitmail-escape-${Date.now()}.db`);
+        const db = new DatabaseSync(escapeDb);
+        db.exec(`
+      CREATE TABLE messages (
+        ROWID INTEGER PRIMARY KEY,
+        date_sent INTEGER,
+        subject INTEGER,
+        sender INTEGER,
+        read INTEGER DEFAULT 1,
+        deleted INTEGER DEFAULT 0,
+        mailbox INTEGER
+      );
+      CREATE TABLE subjects (ROWID INTEGER PRIMARY KEY, subject TEXT);
+      CREATE TABLE addresses (ROWID INTEGER PRIMARY KEY, address TEXT, comment TEXT);
+    `);
+        const now = Math.floor(Date.now() / 1000);
+        // \x1b[31m...\x1b[0m is an ANSI color escape; \x07 is a bell (C0 control).
+        db.prepare("INSERT INTO subjects (ROWID, subject) VALUES (1, ?)").run('Payload \x1b[31mRED\x1b[0m \x07 end');
+        db.prepare("INSERT INTO addresses (ROWID, address, comment) VALUES (1, 'evil@example.com', 'Evil')").run();
+        db.prepare('INSERT INTO messages (ROWID, date_sent, subject, sender, read, deleted, mailbox) VALUES (200, ?, 1, 1, 0, 0, NULL)').run(now);
+        db.close();
+    });
+
+    afterAll(() => {
+        try { fs.unlinkSync(escapeDb); } catch { }
+    });
+
+    it('strips ESC/C0 control chars from table output so indexed mail cannot inject terminal escapes', async () => {
+        const stdout = await new Promise<string>((resolve, reject) => {
+            execFile('node', [binPath, '--db', escapeDb, 'search', '--subject', 'Payload', '--days', '3650'], { env: { ...process.env, FORCE_COLOR: '0' } }, (error, stdout, stderr) => {
+                if (error) {
+                    reject(stderr || error.message);
+                    return;
+                }
+                resolve(stdout);
+            });
+        });
+
+        // \x1b (ESC) and \x07 (BEL) must be stripped; \n (0x0A) is legitimate
+        // table-row formatting and is deliberately excluded from this check.
+        // eslint-disable-next-line no-control-regex
+        expect(stdout).not.toMatch(/[\x00-\x09\x0B-\x1F\x7F-\x9F]/);
+        expect(stdout).toContain('[31mRED[0m'); // literal, no ESC prefix
     });
 });
