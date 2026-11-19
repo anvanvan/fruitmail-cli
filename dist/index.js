@@ -219,11 +219,11 @@ async function getDb(options) {
     return { db, cleanUp };
 }
 function sanitizeCell(value) {
-    // Tab, VT, FF, CR, LF and NEL separate words, so they become spaces. Every other C0/C1
+    // Whitespace (incl. tab and line breaks) and NEL separate words, so they become spaces. Every other C0/C1
     // control char (incl. ESC) is dropped so indexed mail can't inject terminal
     // escape sequences into table output.
     return String(value ?? '')
-        .replace(/[\t\n\v\f\r\x85]/g, ' ')
+        .replace(/[\s\x85]/g, ' ')
         // eslint-disable-next-line no-control-regex
         .replace(/[\x00-\x1F\x7F-\x9F]/g, '')
         .replace(/\s+/g, ' ')
