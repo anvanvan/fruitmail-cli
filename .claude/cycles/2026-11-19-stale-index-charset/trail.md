@@ -23,3 +23,4 @@ status: open
 - B red (base `_part_text` + new rows): `uv run pytest -q tests/test_emlx.py -k unknown_charset` → 2 failed: `charset=punycode` with `secret body words`, and `charset="utf-8\x00"` with `nul label body kept` (content `''`).
 - B green: `uv run pytest -q tests/test_emlx.py` → 21 passed.
 - Suites at the fix commits: `npm test -- --maxWorkers=4` → 146 passed, 12 suites; `npm run test:py` → 65 passed.
+- bugbot finding on 219135e: a schemaless `index.db` plus a failing refresh printed `no such table: emails_fts` instead of the refresh reason. The fallback now needs a stamped index (`indexedAt` set). Test `search --body reports the refresh failure when the stale index was never completed` was red before (`{"error":"no such table: emails_fts"}`) and is green after; `index-cli` + `indexer-runner` pass 29/29.
