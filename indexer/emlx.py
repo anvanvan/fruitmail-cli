@@ -87,7 +87,10 @@ def _part_text(part: email.message.Message) -> Optional[str]:
             payload_str = part.get_payload()
             return payload_str if isinstance(payload_str, str) else None
         charset = part.get_content_charset() or "utf-8"
-        return payload.decode(charset, errors="replace")
+        try:
+            return payload.decode(charset, errors="replace")
+        except LookupError:  # unknown charset label: keep the text as UTF-8
+            return payload.decode("utf-8", errors="replace")
     except Exception:
         return None
 

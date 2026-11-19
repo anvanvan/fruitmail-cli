@@ -25,7 +25,13 @@ describe('Integration: body DB fallback with a 64-bit message_id', () => {
           INSERT INTO subjects VALUES (1, 'Bigint Draft');
           INSERT INTO addresses VALUES (1, 'me@example.com', 'Me');
           INSERT INTO mailboxes VALUES (1, 'imap://acct/Drafts');
+          INSERT INTO subjects VALUES (2, 'Min Int Draft');
+          INSERT INTO subjects VALUES (3, 'Max Int Draft');
+          INSERT INTO subjects VALUES (4, 'Safe Id Draft');
           INSERT INTO messages VALUES (200, 0, 1, 1, 1, 0, -301164615026087337, 1);
+          INSERT INTO messages VALUES (201, 0, 2, 1, 1, 0, -9223372036854775808, 1);
+          INSERT INTO messages VALUES (202, 0, 3, 1, 1, 0, 9223372036854775807, 1);
+          INSERT INTO messages VALUES (203, 0, 4, 1, 1, 0, 42, 1);
         `);
         db.close();
 
@@ -36,6 +42,9 @@ payload="$*"
 if [[ "$payload" != *"-e"* ]]; then payload="$(cat)"; fi
 case "$payload" in
   *"Bigint Draft"*) printf 'Mock Body' ;;
+  *"Min Int Draft"*) printf 'Min Body' ;;
+  *"Max Int Draft"*) printf 'Max Body' ;;
+  *"Safe Id Draft"*) printf 'Safe Body' ;;
   *) printf '__FRUITMAIL_NOT_FOUND__' ;;
 esac
 `);
@@ -46,12 +55,18 @@ esac
         if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
     });
 
-    it('reads the body through the DB fallback', async () => {
+    // Rows: ROWID → body; message_id spans INT64 min, max, a 64-bit hash and a safe id.
+    it.each([
+        [200, 'Mock Body'],
+        [201, 'Min Body'],
+        [202, 'Max Body'],
+        [203, 'Safe Body']
+    ])('reads the body of message %d through the DB fallback', async (rowid, body) => {
         const stdout = await new Promise<string>((resolve, reject) => {
-            exec(`node ${binPath} --db "${dbPath}" body 200`, {
+            exec(`node ${binPath} --db "${dbPath}" body ${rowid}`, {
                 env: { ...process.env, FORCE_COLOR: '0', PATH: `${tempDir}${path.delimiter}${process.env.PATH}` }
             }, (err, out, stderr) => (err ? reject(new Error(stderr || err.message)) : resolve(out.trim())));
         });
-        expect(stdout).toBe('Mock Body');
+        expect(stdout).toBe(body);
     });
 });

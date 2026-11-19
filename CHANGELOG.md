@@ -12,6 +12,10 @@
 
 ### Fixes
 
+- Fixed table output gluing words together when a subject, sender or mailbox contained a tab or line break; each now shows as a space.
+- Fixed `body`/`open` failing with "integer overflow" when the message's database id was the smallest 64-bit integer.
+- Fixed the body indexer indexing any `.emlx` file below the mail folder; it now indexes only messages in a mailbox's `Messages` folder, and its skip warnings show control characters in file names as `\xNN` so a crafted name cannot inject terminal escape sequences.
+- Fixed the body indexer dropping the text of a mail part labelled with an unknown charset; the part is now decoded as UTF-8.
 - Fixed the shell `fruitmail body`/`open` reporting "Message not found" for every message in an account mailbox; they searched only the local mailboxes.
 - Fixed `body`/`open` crashing with "Value is too large to be represented as a JavaScript number" when the message id lookup had to fall back to the database.
 - Fixed pnpm global installs by removing the native SQLite runtime binding (#2). Thanks to @Mytakeon for reporting this.

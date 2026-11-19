@@ -13,6 +13,8 @@ import time
 
 import plistlib
 
+import pytest
+
 from conftest import make_emlx_bytes, make_mime
 
 
@@ -39,7 +41,9 @@ class TestByteCountSlice:
         parse_emlx = _parse_emlx()
         date_header = "Mon, 6 Jan 2025 10:00:00 +0000"
         raw = make_emlx_bytes(
-            make_mime(subject="Quarterly report", sender="alice@example.com", date=date_header)
+            make_mime(
+                subject="Quarterly report", sender="alice@example.com", date=date_header
+            )
         )
 
         parsed = parse_emlx(raw)
@@ -192,7 +196,9 @@ class TestBodyExtraction:
         assert "PLAINMARKER" in parsed.content
         assert "HTMLMARKER" not in parsed.content
 
-    def test_html_parse_error_is_warned_not_silently_swallowed(self, monkeypatch, capsys):
+    def test_html_parse_error_is_warned_not_silently_swallowed(
+        self, monkeypatch, capsys
+    ):
         # T40: strip_html's bare `except Exception: pass` hid a failed parse
         # (an HTML-only body could silently index as truncated/empty); it
         # must warn on stderr, matching the module's convention.
@@ -225,7 +231,9 @@ class TestUndatedMail:
             "\r\n"
             "body with no date header\r\n"
         ).encode("utf-8")
-        raw = make_emlx_bytes(mime, footer=b"")  # no plist footer to fall back to either
+        raw = make_emlx_bytes(
+            mime, footer=b""
+        )  # no plist footer to fall back to either
 
         parsed = parse_emlx(raw)
 
@@ -258,3 +266,46 @@ class TestMalformedAndOversized:
         raw = make_emlx_bytes(make_mime(body=big_body))
 
         assert parse_emlx(raw) is None
+
+
+# bugbot F2: an unknown charset label must not drop the body. Each row:
+# (content type, raw body bytes, text the indexed content must contain).
+UNKNOWN_CHARSET_ROWS = [
+    (
+        "text/plain; charset=x-unknown-8bit",
+        b"ascii body survives",
+        "ascii body survives",
+    ),
+    (
+        "text/plain; charset=x-unknown-8bit",
+        "Grüße aus Köln".encode("utf-8"),
+        "Grüße aus Köln",
+    ),
+    ("text/plain; charset=bogus", b"invalid \xff byte kept", "invalid � byte kept"),
+    (
+        "text/html; charset=x-unknown-8bit",
+        b"<p>html <b>body</b> kept</p>",
+        "html body kept",
+    ),
+    ("text/plain; charset=iso-8859-1", b"caf\xe9 known charset", "café known charset"),
+]
+
+
+@pytest.mark.parametrize("content_type,body,expected", UNKNOWN_CHARSET_ROWS)
+def test_unknown_charset_body_is_decoded_not_dropped(content_type, body, expected):
+    parse_emlx = _parse_emlx()
+    mime = (
+        b"From: a@example.com\r\n"
+        b"Subject: charset\r\n"
+        b"Date: Mon, 6 Jan 2025 10:00:00 +0000\r\n"
+        b"MIME-Version: 1.0\r\n"
+        + f"Content-Type: {content_type}\r\n".encode("ascii")
+        + b"Content-Transfer-Encoding: 8bit\r\n\r\n"
+        + body
+        + b"\r\n"
+    )
+
+    parsed = parse_emlx(make_emlx_bytes(mime))
+
+    assert parsed is not None
+    assert expected in parsed.content

@@ -17,7 +17,9 @@ import stat
 import subprocess
 import sys
 
-from conftest import MailTree, make_emlx_bytes, make_mime
+import pytest
+
+from conftest import MailTree, make_mime
 
 INDEXER_DIR = pathlib.Path(__file__).resolve().parent.parent
 
@@ -77,7 +79,9 @@ def test_build_creates_emails_table_with_composite_pk_and_one_row_per_indexable_
     try:
         info = conn.execute('PRAGMA table_info("emails")').fetchall()
         # rows: (cid, name, type, notnull, dflt_value, pk) — pk>0 in PK order
-        pk_cols = [row[1] for row in sorted((r for r in info if r[5] > 0), key=lambda r: r[5])]
+        pk_cols = [
+            row[1] for row in sorted((r for r in info if r[5] > 0), key=lambda r: r[5])
+        ]
         assert pk_cols == ["account", "mailbox", "message_id"]
         count = conn.execute("SELECT COUNT(*) FROM emails").fetchone()[0]
         assert count == 3  # malformed + no-mbox files are skipped, not fatal
@@ -91,7 +95,9 @@ def test_build_creates_emails_table_with_composite_pk_and_one_row_per_indexable_
         conn.close()
 
 
-def test_vanished_file_read_error_is_skipped_not_fatal(indexer_env, mail_tree, monkeypatch, capsys):
+def test_vanished_file_read_error_is_skipped_not_fatal(
+    indexer_env, mail_tree, monkeypatch, capsys
+):
     # F33: await file.read() is the only unguarded I/O in process_file; Apple
     # Mail moves/deletes .emlx files constantly, so a file that vanishes
     # mid-scan must be recorded and skipped, never abort the whole build.
@@ -114,7 +120,9 @@ def test_vanished_file_read_error_is_skipped_not_fatal(indexer_env, mail_tree, m
     try:
         count = conn.execute("SELECT COUNT(*) FROM emails").fetchone()[0]
         assert count == 2  # alpha + gamma indexed; beta (102.emlx) skipped, not fatal
-        ids = {row[0] for row in conn.execute("SELECT message_id FROM emails").fetchall()}
+        ids = {
+            row[0] for row in conn.execute("SELECT message_id FROM emails").fetchall()
+        }
         assert 102 not in ids
     finally:
         conn.close()
@@ -207,7 +215,9 @@ def test_refresh_converges_add_modify_delete_and_skips_unchanged_files(
     try:
         count = conn.execute("SELECT COUNT(*) FROM emails").fetchone()[0]
         assert count == 3  # 3 - deleted + added
-        ids = {row[0] for row in conn.execute("SELECT message_id FROM emails").fetchall()}
+        ids = {
+            row[0] for row in conn.execute("SELECT message_id FROM emails").fetchall()
+        }
         assert ids == {101, 102, 105}
         # modified row's new body is searchable, its old body is gone
         match = lambda term: [  # noqa: E731
@@ -308,7 +318,9 @@ def test_build_warns_on_stderr_when_emlx_discovered_but_none_indexed(
     assert "indexed 0 emails" in err
 
 
-def test_containment_checked_before_filename_validity_edge4(tmp_path, monkeypatch, capsys):
+def test_containment_checked_before_filename_validity_edge4(
+    tmp_path, monkeypatch, capsys
+):
     # EDGE-4 (verify round-2, user-endorsed): containment must be checked
     # BEFORE the filename is parsed as a message id. A file that fails BOTH
     # checks (non-numeric name, no .mbox ancestor) must be recorded as
@@ -347,7 +359,9 @@ def test_containment_checked_before_filename_validity_edge4(tmp_path, monkeypatc
     assert "no-mbox-or-outside-root" not in in_containment_line
 
 
-def test_real_uv_run_cocoindex_update_subprocess_builds_the_index(indexer_env, mail_tree):
+def test_real_uv_run_cocoindex_update_subprocess_builds_the_index(
+    indexer_env, mail_tree
+):
     # F1/behavior 25: the real loader must import main.py (absolute imports, no
     # package) and build the fixture index end to end.
     _seed_tree(mail_tree)
@@ -373,3 +387,74 @@ def test_real_uv_run_cocoindex_update_subprocess_builds_the_index(indexer_env, m
         assert rows == [(101,)]
     finally:
         conn.close()
+
+
+# securitybot: only Apple Mail's message store (<mailbox>.mbox/.../Messages/)
+# is indexed. Each row: (relative path, indexed message_id or skip reason).
+MESSAGES_DIR_ROWS = [
+    ("ACC-1/INBOX.mbox/Data/1/Messages/101.emlx", 101),
+    ("ACC-1/INBOX.mbox/Data/1/Messages/102.partial.emlx", 102),
+    ("ACC-1/INBOX.mbox/Data/1/103.emlx", "not-in-messages-dir"),
+    ("ACC-1/INBOX.mbox/Attachments/104/2/104.emlx", "not-in-messages-dir"),
+    ("ACC-1/INBOX.mbox/105.emlx", "not-in-messages-dir"),
+    ("ACC-1/Messages.mbox/106.emlx", "not-in-messages-dir"),
+    ("ACC-1/Messages/107.emlx", "no-mbox-or-outside-root"),
+]
+
+
+def test_only_emlx_inside_a_messages_dir_is_indexed(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "MailRoot"
+    tree = MailTree(root)
+    for rel, _ in MESSAGES_DIR_ROWS:
+        tree.write_emlx(rel, make_mime(subject=rel, body="body"))
+    home = tmp_path / "fruitmail-home"
+    _point_indexer_at(monkeypatch, root, home)
+
+    _run_update_in_process()
+
+    conn = _connect(home / "index.db")
+    try:
+        ids = {row[0] for row in conn.execute("SELECT message_id FROM emails")}
+    finally:
+        conn.close()
+    err_lines = capsys.readouterr().err.splitlines()
+    for rel, expected in MESSAGES_DIR_ROWS:
+        message_id = int(pathlib.PurePath(rel).name.split(".", 1)[0])
+        if isinstance(expected, int):
+            assert expected in ids, rel
+        else:
+            assert message_id not in ids, rel
+            line = next((line for line in err_lines if line.endswith(rel)), "")
+            assert f"({expected})" in line, (rel, err_lines)
+
+
+# securitybot: a crafted file name must not reach the terminal raw. Each row:
+# (file name, escaped form the skip line must show instead).
+CONTROL_CHAR_NAME_ROWS = [
+    ("esc\x1b]0;pwned\x07.emlx", "esc\\x1b]0;pwned\\x07.emlx"),
+    ("csi\x1b[2J.emlx", "csi\\x1b[2J.emlx"),
+    ("new\nline.emlx", "new\\x0aline.emlx"),
+    ("cr\rret.emlx", "cr\\x0dret.emlx"),
+    ("del\x7f.emlx", "del\\x7f.emlx"),
+    ("c1\x9b31m.emlx", "c1\\x9b31m.emlx"),
+    ("plain-grüße.emlx", "plain-grüße.emlx"),
+]
+
+
+@pytest.mark.parametrize("name,escaped", CONTROL_CHAR_NAME_ROWS)
+def test_skip_line_escapes_control_chars_in_the_path(
+    tmp_path, monkeypatch, capsys, name, escaped
+):
+    root = tmp_path / "MailRoot"
+    MailTree(root).write_emlx(f"ACC-1/LooseNotes/{name}", make_mime(body="body"))
+    home = tmp_path / "fruitmail-home"
+    _point_indexer_at(monkeypatch, root, home)
+
+    _run_update_in_process()
+
+    err = capsys.readouterr().err
+    skip_lines = [line for line in err.splitlines() if "skipping" in line]
+    assert any(line.endswith(f"LooseNotes/{escaped}") for line in skip_lines), (
+        skip_lines
+    )
+    assert not any(ch in err for ch in "\x1b\x07\r\x7f\x9b"), repr(err)

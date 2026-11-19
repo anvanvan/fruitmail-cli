@@ -14,6 +14,7 @@ from __future__ import annotations
 import gc
 import os
 import pathlib
+import re
 import sqlite3
 import sys
 import types
@@ -90,12 +91,22 @@ def _close_process_log_fh() -> None:
         _process_log_path = None
 
 
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def _printable(path: pathlib.Path) -> str:
+    """The path with C0/C1 control chars as \\xNN: a crafted file name
+    cannot inject terminal escapes or forge extra lines."""
+    return _CONTROL_CHARS.sub(lambda m: f"\\x{ord(m.group()):02x}", str(path))
+
+
 def _record_skip(path: pathlib.Path, reason: str) -> None:
     """Recorded, never fatal: warn on stderr (+ optional test-hook log, F3)."""
-    print(f"fruitmail-indexer: skipping ({reason}): {path}", file=sys.stderr)
+    shown = _printable(path)
+    print(f"fruitmail-indexer: skipping ({reason}): {shown}", file=sys.stderr)
     log_fh = _get_process_log_fh()
     if log_fh is not None:
-        log_fh.write(f"SKIP {reason} {path}\n")
+        log_fh.write(f"SKIP {reason} {shown}\n")
 
 
 def coco_lifespan(builder: coco.EnvironmentBuilder) -> Iterator[None]:
@@ -141,6 +152,11 @@ async def process_file(
     account, mailbox = infer_account_mailbox(path, mail_root)
     if account is None:  # outside root OR no .mbox ancestor (F7)
         _record_skip(path, "no-mbox-or-outside-root")
+        return
+    # Apple Mail stores messages (and .partial.emlx) only as
+    # <mailbox>.mbox/.../Messages/<n>.emlx; any other .emlx is not mail.
+    if path.parent.name != "Messages":
+        _record_skip(path, "not-in-messages-dir")
         return
     try:
         message_id = message_id_from_name(path.name)  # F0 single owner
