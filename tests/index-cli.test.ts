@@ -210,6 +210,19 @@ describe('Integration: body search + index CLI', () => {
         expect(result.stderr).toContain('offline: cannot reach mail root');
     });
 
+    it('search --body reports the refresh failure when the stale index was never completed', async () => {
+        fs.writeFileSync(indexDb, ''); // build killed before table creation: no schema, no stamp
+
+        const result = await runCli(['search', '--body', 'zanzibar', '--json'], {
+            FRUITMAIL_TEST_UV_EXIT: '1',
+            FRUITMAIL_TEST_UV_STDERR: 'offline: cannot reach mail root'
+        }, true);
+
+        expect(result.failed).toBe(true);
+        expect(result.stdout + result.stderr).toContain('offline: cannot reach mail root');
+        expect(result.stdout + result.stderr).not.toContain('no such table');
+    });
+
     it('search --body auto-builds when the index is missing and fails when that build fails', async () => {
         expect(fs.existsSync(indexDb)).toBe(false);
 
