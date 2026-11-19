@@ -194,15 +194,42 @@ describe('Integration: body search + index CLI', () => {
         expect(uvInvocations()).toContain('run cocoindex update main.py');
     });
 
-    it('search --body auto-builds when the index is missing', async () => {
-        expect(fs.existsSync(indexDb)).toBe(false);
+    it('search --body falls back to a stale index with a warning when its auto-refresh fails', async () => {
+        const twoDaysAgo = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+        buildIndexDb(indexDb, [freshRow()], { indexedAt: twoDaysAgo });
 
-        // the stub uv builds nothing (no temp db to swap in), so the command
-        // itself may fail after the build attempt; what matters is that the
-        // indexer was invoked (behavior 17)
-        await runCli(['search', '--body', 'zanzibar', '--json'], {}, true);
+        const result = await runCli(['search', '--body', 'zanzibar', '--json'], {
+            FRUITMAIL_TEST_UV_EXIT: '1',
+            FRUITMAIL_TEST_UV_STDERR: 'offline: cannot reach mail root'
+        }, true);
 
         expect(uvInvocations()).toContain('cocoindex update');
+        expect(result.failed).toBe(false);
+        expect(JSON.parse(result.stdout).map((row: any) => row.id)).toEqual([1]);
+        expect(result.stderr).toMatch(/stale/i);
+        expect(result.stderr).toContain('offline: cannot reach mail root');
+    });
+
+    it('search --body reports the refresh failure when the stale index was never completed', async () => {
+        fs.writeFileSync(indexDb, ''); // build killed before table creation: no schema, no stamp
+
+        const result = await runCli(['search', '--body', 'zanzibar', '--json'], {
+            FRUITMAIL_TEST_UV_EXIT: '1',
+            FRUITMAIL_TEST_UV_STDERR: 'offline: cannot reach mail root'
+        }, true);
+
+        expect(result.failed).toBe(true);
+        expect(result.stdout + result.stderr).toContain('offline: cannot reach mail root');
+        expect(result.stdout + result.stderr).not.toContain('no such table');
+    });
+
+    it('search --body auto-builds when the index is missing and fails when that build fails', async () => {
+        expect(fs.existsSync(indexDb)).toBe(false);
+
+        const result = await runCli(['search', '--body', 'zanzibar', '--json'], { FRUITMAIL_TEST_UV_EXIT: '1' }, true);
+
+        expect(uvInvocations()).toContain('cocoindex update');
+        expect(result.failed).toBe(true);
     });
 
     it('package.json gains test:py/test:all scripts while runtime dependencies stay unchanged', () => {

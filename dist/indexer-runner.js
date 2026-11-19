@@ -276,7 +276,16 @@ async function ensureIndexFresh() {
         await runIndexer('build');
         return;
     }
-    if (status.stale) {
+    if (!status.stale)
+        return;
+    try {
         await runIndexer('refresh');
+    }
+    catch (error) {
+        // A stale index that once finished (stamped) still answers. A missing,
+        // schemaless or never-stamped one has nothing to fall back on.
+        if (status.indexedAt === null)
+            throw error;
+        console.warn(chalk_1.default.yellow(`[indexer] index is stale, refresh failed: ${error.message}`));
     }
 }
