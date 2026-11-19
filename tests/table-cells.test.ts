@@ -11,7 +11,10 @@ const ROWS: Array<[subject: string, cell: string]> = [
     ['Line\r\nBreak', 'Line Break'],
     ['Tab\t\tTwice', 'Tab Twice'],
     ['Esc\x1b[31mRed', 'Esc[31mRed'],
-    ['Bell\x07Ring', 'BellRing']
+    ['Bell\x07Ring', 'BellRing'],
+    ['Vtab\vSplit', 'Vtab Split'],
+    ['Feed\fSplit', 'Feed Split'],
+    ['Nel\u0085Split', 'Nel Split']
 ];
 
 describe('Integration: table cells with control characters', () => {

@@ -89,7 +89,9 @@ def _part_text(part: email.message.Message) -> Optional[str]:
         charset = part.get_content_charset() or "utf-8"
         try:
             return payload.decode(charset, errors="replace")
-        except LookupError:  # unknown charset label: keep the text as UTF-8
+        # Unknown label (LookupError) or a codec that rejects the body (idna:
+        # UnicodeError): keep the text as UTF-8.
+        except (LookupError, UnicodeError):
             return payload.decode("utf-8", errors="replace")
     except Exception:
         return None

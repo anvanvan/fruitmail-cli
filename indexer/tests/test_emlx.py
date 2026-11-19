@@ -288,6 +288,8 @@ UNKNOWN_CHARSET_ROWS = [
         "html body kept",
     ),
     ("text/plain; charset=iso-8859-1", b"caf\xe9 known charset", "café known charset"),
+    # idna is a known codec that raises UnicodeError on a body, not LookupError
+    ("text/plain; charset=idna", b"secret body words", "secret body words"),
 ]
 
 
