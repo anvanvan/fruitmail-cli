@@ -9,6 +9,7 @@ Stdlib only: ``email``, ``html.parser``, ``plistlib``.
 
 from __future__ import annotations
 
+import codecs
 import email
 import email.message
 import email.policy
@@ -79,6 +80,25 @@ def _collapse_ws(text: str) -> str:
     return " ".join(text.split())
 
 
+# Hostname codecs: they map labels, never the bytes of a mail body.
+_HOSTNAME_CODECS = {"idna", "punycode"}
+
+
+def _decode_body(payload: bytes, charset: str) -> str:
+    """Payload decoded by its declared charset, else as UTF-8.
+
+    UTF-8 takes over when the label is unknown (LookupError), malformed
+    (ValueError: a NUL byte), rejects the body (UnicodeError) or names a
+    hostname codec.
+    """
+    try:
+        if codecs.lookup(charset).name not in _HOSTNAME_CODECS:
+            return payload.decode(charset, errors="replace")
+    except (LookupError, ValueError):
+        pass
+    return payload.decode("utf-8", errors="replace")
+
+
 def _part_text(part: email.message.Message) -> Optional[str]:
     """Decoded text of a leaf part, or None if it cannot be decoded."""
     try:
@@ -86,13 +106,7 @@ def _part_text(part: email.message.Message) -> Optional[str]:
         if payload is None:
             payload_str = part.get_payload()
             return payload_str if isinstance(payload_str, str) else None
-        charset = part.get_content_charset() or "utf-8"
-        try:
-            return payload.decode(charset, errors="replace")
-        # Unknown label (LookupError) or a codec that rejects the body (idna:
-        # UnicodeError): keep the text as UTF-8.
-        except (LookupError, UnicodeError):
-            return payload.decode("utf-8", errors="replace")
+        return _decode_body(payload, part.get_content_charset() or "utf-8")
     except Exception:
         return None
 

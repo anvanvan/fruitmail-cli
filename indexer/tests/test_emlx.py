@@ -273,11 +273,6 @@ class TestMalformedAndOversized:
 UNKNOWN_CHARSET_ROWS = [
     (
         "text/plain; charset=x-unknown-8bit",
-        b"ascii body survives",
-        "ascii body survives",
-    ),
-    (
-        "text/plain; charset=x-unknown-8bit",
         "Grüße aus Köln".encode("utf-8"),
         "Grüße aus Köln",
     ),
@@ -288,8 +283,11 @@ UNKNOWN_CHARSET_ROWS = [
         "html body kept",
     ),
     ("text/plain; charset=iso-8859-1", b"caf\xe9 known charset", "café known charset"),
-    # idna is a known codec that raises UnicodeError on a body, not LookupError
+    # hostname codecs: idna raises on a body, punycode turns ASCII to garbage
     ("text/plain; charset=idna", b"secret body words", "secret body words"),
+    ("text/plain; charset=punycode", b"secret body words", "secret body words"),
+    # a NUL in the label makes the codec lookup raise ValueError
+    ('text/plain; charset="utf-8\x00"', b"nul label body kept", "nul label body kept"),
 ]
 
 
