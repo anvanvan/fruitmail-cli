@@ -103,7 +103,7 @@ def _part_text(part: email.message.Message) -> Optional[str]:
     """Decoded text of a leaf part, or None if it cannot be decoded."""
     try:
         payload = part.get_payload(decode=True)
-        if payload is None:
+        if not isinstance(payload, bytes):
             payload_str = part.get_payload()
             return payload_str if isinstance(payload_str, str) else None
         return _decode_body(payload, part.get_content_charset() or "utf-8")
